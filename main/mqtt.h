@@ -23,8 +23,10 @@ extern bool mqtt_connected;
 
 void wifi_init_config(void);
 void mqtt_app_start(void);
+void trim_new_line(char* str);
 
 void TaskMqttPublish(void *pvParameters);
+void TaskSubscribe(void *pvParameters);
 
 
 

@@ -9,5 +9,5 @@ void app_main(void)
     mqtt_app_start();
 
     xTaskCreate(Task1,"Task1",4096,NULL,5,NULL);
-    xTaskCreate(TaskMqttPublish,"TaskMqttPublish",4096,NULL,5,NULL);
+    
 }

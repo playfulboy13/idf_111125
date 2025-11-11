@@ -1,7 +1,7 @@
 #include "mqtt.h"
 
-extern uint8_t hivemq_root_ca_pem_start[] asm("_binary_hivemq_root_ca_pem_start");
-extern uint8_t hivemq_root_ca_pem_stop[] asm("_binary_hivemq_root_ca_pem_stop");
+extern const uint8_t hivemq_root_ca_pem_start[] asm("_binary_hivemq_root_ca_pem_start");
+extern const uint8_t hivemq_root_ca_pem_stop[] asm("_binary_hivemq_root_ca_pem_stop");
 
 bool wifi_connected=false;
 bool mqtt_connected=false;
@@ -40,7 +40,8 @@ void wifi_init_config(void)
     esp_netif_init();
     esp_event_loop_create_default();
     esp_netif_create_default_wifi_sta();
-    wifi_init_config_t conf=WIFI_INIT_CONFIG_DEFAULT();
+    wifi_init_config_t cfg=WIFI_INIT_CONFIG_DEFAULT();
+    esp_wifi_init(&cfg);
     wifi_config_t wifi_config={
         .sta={
             .ssid=WIFI_SSID,
@@ -54,39 +55,43 @@ void wifi_init_config(void)
     esp_wifi_start();
 }
 
-static void mqtt_event_handler(void *arg,esp_event_base_t event_base,int32_t event_id,void *event_data)
+static void mqtt_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
-    esp_mqtt_event_handle_t event=event_data;
-    esp_mqtt_client_handle_t client=event->client;
+    esp_mqtt_event_handle_t event = event_data;
+    esp_mqtt_client_handle_t client = event->client;
 
     switch(event->event_id)
     {
         case MQTT_EVENT_CONNECTED:
-        {
-            global_client=client;
-            esp_mqtt_client_subscribe(client,"namban123/control",1);
+            ESP_LOGI(TAG, "MQTT CONNECTED");
+            global_client = client;
+            esp_mqtt_client_subscribe(client, "namban123/control", 1);
+            esp_mqtt_client_publish(client, "namban123/status", "online", 0, 0, false);
+            mqtt_connected=true;
+            xTaskCreate(TaskMqttPublish,"TaskMqttPublish",4096,NULL,5,NULL);
+            xTaskCreate(TaskSubscribe,"TaskSubscribe",4096,NULL,5,NULL);
             break;
-        }
-        case MQTT_EVENT_DATA:
-        {
-            mqtt_msg_t msg;
-            memset(&msg,0,sizeof(msg));
 
-            snprintf(msg.topic,sizeof(msg.topic),"%.*s",event->topic_len,event->topic);
-            snprintf(msg.data,sizeof(msg.data),"%.*s",event->data_len,event->data);
-            if(mqtt_msg_queue!=NULL)
-            {
-                xQueueSendFromISR(mqtt_msg_queue,&msg,NULL);
+        case MQTT_EVENT_DATA:
+            mqtt_msg_t msg;
+            memset(&msg, 0, sizeof(msg));
+            snprintf(msg.topic, sizeof(msg.topic), "%.*s", event->topic_len, event->topic);
+            snprintf(msg.data, sizeof(msg.data), "%.*s", event->data_len, event->data);
+            if(mqtt_msg_queue != NULL) {
+                xQueueSend(mqtt_msg_queue, &msg, portMAX_DELAY);
             }
+            break;
+        case MQTT_EVENT_DISCONNECTED:
+        {
+            mqtt_connected=false;
             break;
         }
         default:
-        {
-            ESP_LOGI(TAG,"MQTT ID: %d",event->event_id);
+            ESP_LOGI(TAG, "MQTT EVENT ID: %d", event->event_id);
             break;
-        }
     }
 }
+
 
 void mqtt_app_start(void)
 {
@@ -123,5 +128,33 @@ void TaskMqttPublish(void *pvParameters)
         snprintf(buffer,sizeof(buffer),"HELLO BROKER FROM ESP32!");
         esp_mqtt_client_publish(global_client,"namban123/test_topic",buffer,0,0,false);
         vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+void trim_new_line(char *str)
+{
+    size_t len=strlen(str);
+    while(len>0&&(str[len-1]=='\r'||str[len-1]=='\n'))
+    {
+        len--;
+        str[len]='\0';
+    }
+}
+
+void TaskSubscribe(void *pvParameters)
+{
+    mqtt_msg_t rxChar;
+
+    while(1)
+    {
+        if(xQueueReceive(mqtt_msg_queue,&rxChar,portMAX_DELAY)==pdTRUE)
+        {
+    
+            if(strcmp(rxChar.topic,"namban123/control")==0)
+            {
+                trim_new_line(rxChar.data);
+                ESP_LOGI(TAG,"%s\r\n",rxChar.data);
+            }
+        }
     }
 }
