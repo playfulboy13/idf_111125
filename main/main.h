@@ -24,6 +24,7 @@ extern const char *TAG;
 #include "mqtt_client.h"
 
 
-
+#include "user_task.h"
+#include "mqtt.h"
 
 #endif

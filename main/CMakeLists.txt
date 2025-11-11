@@ -1,4 +1,4 @@
-idf_component_register(SRCS "main.c"
+idf_component_register(SRCS "main.c" "user_task.c" "mqtt.c"
 INCLUDE_DIRS "."
 REQUIRES driver freertos mqtt nvs_flash json esp_http_server esp_wifi
 EMBED_TXTFILES "hivemq_root_ca.pem")
